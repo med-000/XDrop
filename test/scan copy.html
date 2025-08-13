@@ -1,0 +1,64 @@
+<script type="text/javascript" src="bluejelly.js"></script>
+<button id="scan">Scan</button>
+  <div id="device_name"> </div>
+  <div id="device_uuid"> </div>
+  <div id="service_list"> </div>
+  <button id="connect" class="button">Connect</button>
+  <div id="uuid_name"> </div>
+<div id="status"> </div>
+<button id="read" class="button">Read</button>
+  <div id="data_text"> </div>
+
+  
+<script>
+const SERVICE = '12345678-1234-5678-1234-56789abcdef0';
+const ble = new BlueJelly();
+
+ble.setUUID('UUID1', SERVICE, '00000000-0000-0000-0000-000000000000');
+
+scan.onclick = () => ble.scan('UUID1');
+
+ble.onScan = async (deviceName) => {
+  document.getElementById('device_name').innerHTML = deviceName;
+
+  const dev = ble.bluetoothDevice;
+  const server = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+
+  const service = await server.getPrimaryService(SERVICE);
+
+  const chars = await service.getCharacteristics();
+
+ let html = `<p><strong>Service UUID:</strong> ${service.uuid}</p><ul>`;
+
+  chars.forEach(c => {
+    const props = Object.keys(c.properties).filter(k => c.properties[k]).join(', ');
+    html += `<li><strong>${c.uuid}</strong> [${props}]</li>`;
+  });
+  html += '</ul>';
+  document.getElementById('service_list').innerHTML = html;
+
+  const notifyChar = chars.find(c => c.properties.notify);
+  const writeChar  = chars.find(c => c.properties.write || c.properties.writeWithoutResponse)
+                  || notifyChar;
+
+  if (!writeChar) { 
+    document.getElementById('status').textContent = '使える特性が見つからない'; 
+    return; 
+  }
+  
+  ble.setUUID('UUID1', SERVICE, writeChar.uuid);
+}
+
+ble.onConnectGATT = function (uuid) {
+  console.log('> connected GATT!');
+
+  document.getElementById('uuid_name').innerHTML = uuid;
+  document.getElementById('status').innerHTML = "connected GATT!";
+}
+document.getElementById('connect').addEventListener('click', function(){
+      ble.connectGATT('UUID1');
+});
+document.getElementById('read').addEventListener('click', function() {
+      ble.read('UUID1');
+});
+</script>

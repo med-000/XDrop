@@ -1,0 +1,60 @@
+<script type="text/javascript" src="bluejelly.js"></script>
+<button id="scan">Scan</button>
+  <div id="device_name"> </div>
+  <div id="device_uuid"> </div>
+  <button id="connect" class="button">Connect</button>
+  <div id="uuid_name"> </div>
+<div id="status"> </div>
+<button id="read" class="button">Read</button>
+  <div id="data_text"> </div>
+<input id="write_value" class="button" value="BlueJelly" size="20">
+<button id="write" class="button">Write</button>
+
+  
+<script>
+var ble = new BlueJelly();
+ble.onScan = function (deviceName) {
+  document.getElementById('device_name').innerHTML = deviceName;
+}
+document.getElementById('scan').addEventListener('click', function() {
+      ble.scan('UUID1');
+});
+window.onload = function () {
+  ble.setUUID("UUID1", "12345678-1234-5678-1234-56789abcdef0", "abcdef01-1234-5678-1234-56789abcdef0");
+}
+ble.onConnectGATT = function (uuid) {
+  console.log('> connected GATT!');
+
+  document.getElementById('uuid_name').innerHTML = uuid;
+  document.getElementById('status').innerHTML = "connected GATT!";
+}
+document.getElementById('connect').addEventListener('click', function(){
+      ble.connectGATT('UUID1');
+});
+ble.onRead = function (data, uuid){
+  const text = new TextDecoder("utf-8").decode(new Uint8Array(data.buffer));
+
+  console.log(text); 
+
+  document.getElementById('data_text').innerHTML = text;
+  document.getElementById('uuid_name').innerHTML = uuid;
+  document.getElementById('status').innerHTML = "read data";
+}
+document.getElementById('read').addEventListener('click', function() {
+      ble.read('UUID1');
+});
+ble.onWrite = function(uuid){
+  document.getElementById('uuid_name').innerHTML = uuid;
+  document.getElementById('status').innerHTML = "written data"
+}
+document.getElementById('write').addEventListener('click', function() {
+  const textEncoder = new TextEncoder();
+  const text_data = document.getElementById('write_value').value;
+  const text_data_encoded = textEncoder.encode(text_data);
+
+  ble.write('UUID1', text_data_encoded);
+});
+fetch('https://ipinfo.io?callback')
+  .then(res => res.json())
+  .then(json => console.log(json.ip))
+</script>

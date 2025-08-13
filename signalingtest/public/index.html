@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>WebRTC DataChannel (REST / Non-trickle)</title>
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:900px;margin:24px auto;padding:0 16px}
+  fieldset{margin:12px 0;padding:12px;border-radius:12px}
+  input[type=text]{width:240px;padding:6px}
+  button{padding:8px 12px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;margin-right:6px}
+  progress{width:100%}
+  #log{white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px;height:200px;overflow:auto}
+</style>
+
+<h1>WebRTC DataChannel – Local</h1>
+
+<fieldset>
+  <legend>Session</legend>
+  <button id="btnNew">Create Session</button>
+  <input id="token" type="text" placeholder="token" />
+  <button id="btnJoinRecv">Join as Receiver</button>
+  <button id="btnReset">Reset</button>
+  <span id="status"></span>
+</fieldset>
+
+<div style="margin-top:10px">
+  <button id="btnShowQR">Show QR</button>
+  <label style="margin-left:8px">
+    <input type="radio" name="qrmode" value="unified" checked>
+    Unified(JSON in URL)
+  </label>
+  <label style="margin-left:8px">
+    <input type="radio" name="qrmode" value="url">
+    URL only
+  </label>
+  <!-- qrcodejs は自動で <canvas> を生成するので container は <div> -->
+  <div id="qr" style="width:256px;height:256px;border:1px dashed #ccc;border-radius:8px" title="Scan this QR"></div>
+</div>
+
+<fieldset>
+  <legend>Sender / Receiver</legend>
+  <button id="btnStartOffer">Start as Sender</button>
+  <input id="file" type="file">
+  <button id="btnSend">Send File</button>
+  <progress id="progSend" value="0" max="1" hidden></progress>
+</fieldset>
+
+<fieldset>
+  <legend>Receiver</legend>
+  <div>File: <b id="recvName">—</b></div>
+  <progress id="progRecv" value="0" max="1" hidden></progress><br/>
+  <a id="download" href="#" download style="display:none">Download</a>
+</fieldset>
+
+<h3>Log</h3>
+<div id="log"></div>
+
+<!-- ローカルのQRライブラリ（配信できていればこれでOK / app.js 側でもフォールバックあり） -->
+<script src="/vendor/qrcode.min.js" defer></script>
+<script src="./app.js" defer></script>
