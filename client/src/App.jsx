@@ -1,88 +1,109 @@
-import React, { useEffect, useRef, useState } from 'react';
+// src/App.jsx（テキスト/URL送受信対応 版）
+// 依存: react, react-router-dom, qrcode.react
+//   npm i react-router-dom qrcode.react
+import React, {
+  useEffect, useMemo, useRef, useState,
+  createContext, useContext
+} from 'react';
+import {
+  BrowserRouter, Routes, Route,
+  useNavigate, useLocation, Link,
+  useParams, Navigate
+} from 'react-router-dom';
 import QRCode from 'qrcode.react';
 
-export default function App() {
-  // ===== UI states =====
-  const [token, setToken] = useState('');
-  const [logs, setLogs] = useState([]);
-  const [qrValue, setQrValue] = useState('');
-  const [conn, setConn] = useState({
-    role: 'idle',            // 'idle' | 'sender' | 'receiver'
-    phase: 'idle',           // 'idle' | 'signaling' | 'waiting-offer' | 'waiting-answer' | 'connecting' | 'connected' | 'closed' | 'error'
-    ice: 'new',
-    dc: 'closed'
-  });
+/* ========== ユーティリティ ========== */
+const TOKEN_RE = /^\d{6}$/;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // 送受信用の状態
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [sentFiles, setSentFiles] = useState([]);       // {id, name, size, status:'queued'|'sending'|'done'|'error', sentBytes, at}
-  const [receivedFiles, setReceivedFiles] = useState([]); // {id, name, size, blob, at}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+async function getJSONorNull(path) {
+  const r = await fetch(path);
+  if (r.status === 204 || r.status === 404) return null;
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+function formatBytes(n) {
+  if (!Number.isFinite(n)) return '-';
+  const u = ['B','KB','MB','GB','TB'];
+  let i=0, x=n;
+  while (x>=1024 && i<u.length-1) { x/=1024; i++; }
+  return `${x.toFixed(x<10 && i>0?1:0)} ${u[i]}`;
+}
+function safeFilename(name, fallback='received.bin') {
+  const t = (name||'').trim();
+  if (!t || t === '-') return fallback;
+  return t.replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_');
+}
+function b64url(s){return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function ub64url(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return atob(s);}
 
-  // ===== refs =====
-  const fileRef = useRef(null);
+function useClipboard() {
+  const [copied, setCopied] = useState('');
+  const copy = async (text) => {
+    if (!text) return;
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    setCopied('Copied'); setTimeout(()=>setCopied(''), 1200);
+  };
+  return {copied, copy};
+}
+function isProbablyURL(s) {
+  const t = String(s||'').trim();
+  if (!t) return false;
+  try { new URL(t); return true; } catch {}
+  return /^www\.[^\s]+/i.test(t);
+}
+function normalizeURL(s) {
+  const t = String(s||'').trim();
+  if (!t) return t;
+  if (/^https?:\/\//i.test(t)) return t;
+  if (/^www\./i.test(t)) return 'https://' + t;
+  return t;
+}
+
+/* ========== WebRTC コンテキスト ========== */
+const ConnCtx = createContext(null);
+const useConn = () => useContext(ConnCtx);
+
+function ConnProvider({ children }) {
   const pcRef = useRef(null);
   const dcRef = useRef(null);
-  const connectedRef = useRef(false);
-  const autoStartedRef = useRef(false);
-  const pendingFileRef = useRef(null); // 接続待ちキュー
+
+  const [token, setToken] = useState('');
+  const [status, setStatus] = useState('Idle');
+  const [connected, setConnected] = useState(false);
+  const [logs, setLogs] = useState([]);
+
+  // 転送関連ステート
+  const [sendProg, setSendProg] = useState({ hidden:true, max:1, value:0 });
+  const [recvProg, setRecvProg] = useState({ hidden:true, max:1, value:0 });
+  const [recvName, setRecvName] = useState('—');
+
+  const [recvFiles, setRecvFiles] = useState([]); // {name,size,blobUrl,ts}
+  const [sentFiles, setSentFiles] = useState([]); // {name,size,bytes,done,ts}
+
+  // メッセージ（テキスト/URL）ログ
+  const [messages, setMessages] = useState([]); // {dir:'in'|'out', kind:'text'|'url', text, ts}
 
   const log = (...a) => setLogs(x => [...x, a.join(' ')]);
-  const isTokenValid = /^\d{6}$/.test(token);
-
-  // ===== helpers =====
-  const api = async (path, opts) => {
-    const r = await fetch(path, opts);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  };
-  const getJSONorNull = async (path) => {
-    const r = await fetch(path);
-    if (r.status === 204 || r.status === 404) return null;
-    if (!r.ok) throw new Error(r.status);
-    return r.json();
-  };
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-  // ファイル名サニタイズ＆フォールバック
-  const two = (n)=>String(n).padStart(2,'0');
-  const nowStamp = () => {
-    const d=new Date();
-    return `${d.getFullYear()}${two(d.getMonth()+1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`;
-  };
-  const sanitizeFilename = (name, fallbackExt='bin') => {
-    let n = (name||'').toString().trim();
-    if (!n || n === '-' || n === '—') {
-      n = `xdrop-${nowStamp()}.${fallbackExt}`;
-    }
-    // 禁止文字を置換
-    n = n.replace(/[\\/:*?"<>|\u0000-\u001F]+/g, '_');
-    // 末尾スペース/ドットはNGな環境がある
-    n = n.replace(/[. ]+$/g, '');
-    if (!n) n = `xdrop-${nowStamp()}.${fallbackExt}`;
-    // 長すぎる場合は切り詰め（拡張子は残す）
-    if (n.length > 200) {
-      const i = n.lastIndexOf('.');
-      if (i > 0 && i < n.length-1) {
-        const base = n.slice(0, i).slice(0, 180);
-        const ext = n.slice(i+1);
-        n = `${base}.${ext}`;
-      } else {
-        n = n.slice(0, 200);
-      }
-    }
-    return n;
-  };
 
   function createPC() {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-    pc.addEventListener('iceconnectionstatechange', () => {
-      const s = pc.iceConnectionState;
-      log('iceConnectionState:', s);
-      setConn(c => ({ ...c, ice: s, phase: (s === 'connected' || s === 'completed') ? 'connected' : c.phase }));
-    });
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.addEventListener('iceconnectionstatechange', () => log('iceConnectionState:', pc.iceConnectionState));
     pc.addEventListener('icegatheringstatechange', () => log('iceGatheringState:', pc.iceGatheringState));
+    pc.addEventListener('connectionstatechange', () => {
+      setStatus(pc.connectionState);
+      setConnected(pc.connectionState === 'connected');
+    });
     return pc;
   }
   function waitIceComplete(pc) {
@@ -98,122 +119,107 @@ export default function App() {
     });
   }
 
-  // ===== DataChannel wiring =====
   function wireSendChannel(ch, role) {
     ch.binaryType = 'arraybuffer';
     ch.onopen = () => {
       log(`[${role}] DataChannel open`);
       dcRef.current = ch;
-      connectedRef.current = true;
-      setConn(c => ({ ...c, dc: 'open', phase: 'connected' }));
-
-      // 接続後、キューされているファイルがあれば送信
-      if (pendingFileRef.current) {
-        sendFileNow(pendingFileRef.current).catch(e => log('[send] error', e.message));
-      }
+      setConnected(true);
+      setStatus('connected');
     };
     ch.onclose = () => {
-      log(`[${role}] DC close`);
+      log(`[${role}] DataChannel close`);
       if (dcRef.current === ch) {
         dcRef.current = null;
-        connectedRef.current = false;
-        setConn(c => ({ ...c, dc: 'closed', phase: 'closed' }));
+        setConnected(false);
+        setStatus('closed');
       }
     };
   }
+
   function wireRecvChannel(ch) {
     ch.binaryType = 'arraybuffer';
     let expected=0, received=0, chunks=[];
-    let metaName='';
+    setRecvProg({ hidden:true, max:1, value:0 });
+    setRecvName('—');
 
     ch.onmessage = async (e) => {
       if (typeof e.data === 'string') {
+        // 1) テキスト/URL
+        if (e.data.startsWith('MSG:')) {
+          try {
+            const m = JSON.parse(e.data.slice(4));
+            const kind = m.kind === 'url' ? 'url' : (isProbablyURL(m.text) ? 'url' : 'text');
+            setMessages(arr => [{ dir:'in', kind, text:String(m.text||''), ts:Date.now() }, ...arr]);
+            log('[msg] IN', kind, m.text);
+          } catch {}
+          return;
+        }
+        // 2) ファイルメタ
         if (e.data.startsWith('META:')) {
           const m = JSON.parse(e.data.slice(5));
           expected = (m.size|0); received = 0; chunks = [];
-          metaName = sanitizeFilename(m.name, 'bin');
-          // 受信プログレス表示は一覧側でやるのでここでは記録のみ
+          setRecvName(safeFilename(m.name));
+          setRecvProg({ hidden:false, max: expected || 1, value:0 });
+          log('[recv] META', m.name, expected, 'bytes');
           return;
         }
+        // 3) ファイル終端
         if (e.data === 'EOF') {
-          const blob = new Blob(chunks, {type:'application/octet-stream'});
-          const item = {
-            id: `rx_${Date.now()}`,
-            name: metaName || sanitizeFilename('', 'bin'),
-            size: expected || blob.size || 0,
-            blob,
-            at: Date.now()
-          };
-          setReceivedFiles(list => [item, ...list]);
-          log('[receiver] receive done:', item.name);
+          const blob = new Blob(chunks, { type:'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const n = safeFilename(recvName);
+          setRecvFiles(f => [{ name:n, size:expected, blobUrl:url, ts:Date.now() }, ...f]);
+          setRecvProg(p => ({ ...p, value: expected||p.value }));
+          log('[recv] DONE', n);
           return;
         }
       }
-      // バイナリチャンク
-      let bufU8;
-      if (e.data instanceof ArrayBuffer) {
-        bufU8 = new Uint8Array(e.data);
-      } else if (e.data && typeof e.data.arrayBuffer === 'function') {
-        bufU8 = new Uint8Array(await e.data.arrayBuffer());
-      } else {
-        return;
-      }
-      chunks.push(bufU8);
-      received += bufU8.byteLength;
+      // 4) バイナリ本体
+      let u8;
+      if (e.data instanceof ArrayBuffer) u8 = new Uint8Array(e.data);
+      else if (e.data && typeof e.data.arrayBuffer === 'function') u8 = new Uint8Array(await e.data.arrayBuffer());
+      else return;
+      chunks.push(u8);
+      received += u8.byteLength;
+      setRecvProg(p => ({ ...p, value: received }));
     };
   }
 
-  // ===== actions =====
-  const createSession = async () => {
-    const { token } = await api('/api/session', { method: 'POST' });
-    setToken(token);
-    setConn({ role: 'sender', phase: 'signaling', ice: 'new', dc: 'closed' });
-    log('[session] created', token);
-    autoStartedRef.current = false;
-    startSender(token).catch(e => {
-      log('[sender] error:', e.message);
-      setConn(c => ({ ...c, phase: 'error' }));
-    });
-  };
-
-  const startSender = async (tok = token) => {
-    if (connectedRef.current || pcRef.current) { log('[sender] already running; Reset first'); return; }
-    if (!/^\d{6}$/.test(tok)) { alert('6桁の token が必要です'); return; }
-
-    setConn(c => ({ ...c, role: 'sender', phase: 'signaling' }));
+  const startSender = async (tok) => {
+    if (!tok) throw new Error('token required');
+    if (pcRef.current) return;
+    setStatus('starting(sender)');
     const pc = createPC(); pcRef.current = pc;
 
-    const ch = pc.createDataChannel('file');
+    const ch = pc.createDataChannel('file'); // 双方向で使う
     wireSendChannel(ch, 'sender');
     wireRecvChannel(ch);
 
-    const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+    const offer = await pc.createOffer({ offerToReceiveAudio:false, offerToReceiveVideo:false });
     await pc.setLocalDescription(offer);
     await waitIceComplete(pc);
 
     await api('/api/offer', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ token: tok, sdp: pc.localDescription.sdp })
     });
-    log('[sender] offer posted, waiting answer...');
-    setConn(c => ({ ...c, phase: 'waiting-answer' }));
+    log('[sender] offer posted; waiting answer');
 
     let ans = null;
     while (!ans) {
       const json = await getJSONorNull(`/api/answer?token=${encodeURIComponent(tok)}`);
-      if (json) ans = json.sdp; else await sleep(700);
+      if (json) ans = json.sdp; else await sleep(800);
     }
     await pc.setRemoteDescription({ type:'answer', sdp: ans });
-    log('[sender] answer applied');
-    setConn(c => ({ ...c, phase: 'connecting' }));
+    setStatus('answer-applied');
   };
 
-  const joinReceiver = async () => {
-    if (connectedRef.current || pcRef.current) { log('[receiver] already running; Reset first'); return; }
-    if (!isTokenValid) { alert('6桁の token を入れてください'); return; }
-
-    setConn({ role: 'receiver', phase: 'waiting-offer', ice: 'new', dc: 'closed' });
+  const joinReceiver = async (tok) => {
+    if (!tok) throw new Error('token required');
+    if (pcRef.current) return;
+    setStatus('starting(receiver)');
     const pc = createPC(); pcRef.current = pc;
 
     pc.ondatachannel = (ev) => {
@@ -224,8 +230,8 @@ export default function App() {
 
     let offerSdp = null;
     while (!offerSdp) {
-      const json = await getJSONorNull(`/api/offer?token=${encodeURIComponent(token)}`);
-      if (json) offerSdp = json.sdp; else await sleep(700);
+      const json = await getJSONorNull(`/api/offer?token=${encodeURIComponent(tok)}`);
+      if (json) offerSdp = json.sdp; else await sleep(800);
     }
     await pc.setRemoteDescription({ type:'offer', sdp: offerSdp });
 
@@ -236,313 +242,407 @@ export default function App() {
     await api('/api/answer', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ token, sdp: pc.localDescription.sdp })
+      body: JSON.stringify({ token: tok, sdp: pc.localDescription.sdp })
     });
     log('[receiver] answer posted');
-    setConn(c => ({ ...c, phase: 'connecting' }));
+    setStatus('answer-posted');
   };
 
-  // 送信本体（Sendボタン or 接続完了後の自動送信）
-  const sendFileNow = async (f) => {
+  const sendFile = async (file) => {
     const dc = dcRef.current;
-    const itemId = `tx_${Date.now()}`;
+    if (!dc || dc.readyState !== 'open') throw new Error('DataChannel not open');
+    if (!file) throw new Error('No file selected');
 
-    // 送信リストに登録（queued）
-    setSentFiles(list => [{ id:itemId, name:f.name, size:f.size, status:'queued', sentBytes:0, at:Date.now() }, ...list]);
+    const entry = { name:file.name||'(unnamed)', size:file.size|0, bytes:0, done:false, ts:Date.now() };
+    setSentFiles(list => [entry, ...list]);
+    setSendProg({ hidden:false, max:file.size||1, value:0 });
 
-    if (!dc || dc.readyState !== 'open') {
-      pendingFileRef.current = f;
-      log('[send] queued (will send after connected):', f.name);
-      return;
-    }
-
-    // sending 開始
-    setSentFiles(list => list.map(it => it.id===itemId ? { ...it, status:'sending' } : it));
-
-    const chunk = 16 * 1024;
-    dc.send('META:' + JSON.stringify({ name: f.name, size: f.size }));
-    dc.bufferedAmountLowThreshold = 1 << 20; // 1MB
+    const chunk = 16*1024;
+    dc.send('META:' + JSON.stringify({ name:file.name, size:file.size }));
+    dc.bufferedAmountLowThreshold = 1<<20;
 
     let offset = 0;
-    try {
-      while (offset < f.size) {
-        const buf = await f.slice(offset, offset + chunk).arrayBuffer();
-        while (dc.bufferedAmount > dc.bufferedAmountLowThreshold) {
-          await new Promise(r => { dc.onbufferedamountlow = r; });
-        }
-        dc.send(buf);
-        offset += buf.byteLength;
-        setSentFiles(list => list.map(it => it.id===itemId ? { ...it, sentBytes: offset } : it));
+    while (offset < file.size) {
+      const buf = await file.slice(offset, offset + chunk).arrayBuffer();
+      while (dc.bufferedAmount > dc.bufferedAmountLowThreshold) {
+        await new Promise(r => { dc.onbufferedamountlow = r; });
       }
-      dc.send('EOF');
-      log('[send] done:', f.name);
-      setSentFiles(list => list.map(it => it.id===itemId ? { ...it, status:'done', sentBytes: f.size } : it));
-    } catch (e) {
-      log('[send] error:', e.message);
-      setSentFiles(list => list.map(it => it.id===itemId ? { ...it, status:'error' } : it));
+      dc.send(buf);
+      offset += buf.byteLength;
+      setSendProg(p => ({ ...p, value: offset }));
+      setSentFiles(([first, ...rest]) => [{ ...first, bytes: offset }, ...rest]);
     }
+    dc.send('EOF');
+    setSentFiles(([first, ...rest]) => [{ ...first, bytes:first.size, done:true }, ...rest]);
+    log('[send] done', file.name, file.size);
   };
 
-  const onChooseFile = (e) => {
-    const f = e.target?.files?.[0];
-    if (!f) { setSelectedFile(null); return; }
-    setSelectedFile(f);
-  };
+  const sendText = async (textRaw) => {
+    const dc = dcRef.current;
+    if (!dc || dc.readyState !== 'open') throw new Error('DataChannel not open');
+    const text = String(textRaw||'').trim();
+    if (!text) throw new Error('Empty message');
 
-  const clickSend = () => {
-    const f = selectedFile || fileRef.current?.files?.[0];
-    if (!f) { alert('ファイルを選択してください'); return; }
-    sendFileNow(f).catch(err => log('[send] error', err.message));
-  };
-
-  const clickDownload = (item) => {
-    const name = sanitizeFilename(item.name, 'bin');
-    const url = URL.createObjectURL(item.blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = name; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    const kind = isProbablyURL(text) ? 'url' : 'text';
+    const payload = { kind, text };
+    dc.send('MSG:' + JSON.stringify(payload));
+    setMessages(arr => [{ dir:'out', kind, text, ts:Date.now() }, ...arr]);
+    log('[msg] OUT', kind, text);
   };
 
   const reset = () => {
     try { dcRef.current?.close(); } catch {}
     try { pcRef.current?.close(); } catch {}
-    dcRef.current = null; pcRef.current = null; connectedRef.current = false;
-    pendingFileRef.current = null;
-    setSelectedFile(null);
-    setSentFiles([]);
-    setReceivedFiles([]);
-    autoStartedRef.current = false;
-    setConn({ role: 'idle', phase: 'idle', ice: 'new', dc: 'closed' });
-    log('[ui] reset');
-    if (fileRef.current) fileRef.current.value = '';
+    dcRef.current = null; pcRef.current = null;
+    setConnected(false);
+    setStatus('Idle');
+    setLogs([]);
+    setRecvFiles([]); setSentFiles([]);
+    setMessages([]);
+    setSendProg({ hidden:true, max:1, value:0 });
+    setRecvProg({ hidden:true, max:1, value:0 });
+    setRecvName('—');
   };
 
-  // ===== QR =====
-  const b64url = (s) => btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  const ub64url = (s) => { s = s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='='; return atob(s); };
-  const buildUnifiedURL = (tok) => {
-    const payload = { v:1, o:location.origin, t:tok, r:'join', a:1 };
-    const enc = b64url(JSON.stringify(payload));
-    return `${location.origin}/#qr=${enc}`;
+  const value = useMemo(() => ({
+    token, setToken, status, setStatus, connected,
+    logs, log,
+    sendProg, recvProg, recvName,
+    recvFiles, sentFiles,
+    messages,
+    startSender, joinReceiver, sendFile, sendText, reset,
+    pcRef, dcRef
+  }), [token, status, connected, logs, sendProg, recvProg, recvName, recvFiles, sentFiles, messages]);
+
+  return <ConnCtx.Provider value={value}>{children}</ConnCtx.Provider>;
+}
+
+/* ========== 画面 ========== */
+function Layout({ children }) {
+  const { status, connected } = useConn();
+  const loc = useLocation();
+  return (
+    <div style={styles.page}>
+      <header style={styles.header}>
+        <h1 style={{margin:0, fontSize:22}}>XDrop</h1>
+        <nav style={styles.nav}>
+          <Link to="/start">Start</Link>
+          <Link to="/join">Join</Link>
+        </nav>
+      <div style={styles.headerRight}>
+          <b>Status:</b> {status} {connected ? '✅' : '…'}
+          <span style={{marginLeft:10, opacity:.7}}>{loc.pathname}</span>
+        </div>
+      </header>
+      {children}
+    </div>
+  );
+}
+
+function StartPage() {
+  const { token, setToken, status, connected, startSender, reset, logs } = useConn();
+  const [joinURL, setJoinURL] = useState('');
+  const {copied, copy} = useClipboard();
+  const nav = useNavigate();
+  const buildJoinURL = (t) => `${location.origin}/join?t=${encodeURIComponent(t)}&auto=1`;
+
+  const createSession = async () => {
+    const { token: t } = await api('/api/session', { method:'POST' });
+    setToken(t);
+    const url = buildJoinURL(t);
+    setJoinURL(url);
+    startSender(t).catch(console.error);
   };
 
   useEffect(() => {
-    if (/^\d{6}$/.test(token)) setQrValue(buildUnifiedURL(token));
-    else setQrValue('');
-  }, [token]);
+    if (connected && token) nav(`/room/${token}`, { replace:true });
+  }, [connected, token, nav]);
 
-  // ===== ページ起動時：URL/ハッシュの自動処理 =====
+  return (
+    <Layout>
+      <fieldset style={styles.box}>
+        <legend>Start (Issue token & QR)</legend>
+        <div style={styles.row}>
+          <button onClick={createSession}>Create Session</button>
+          <button onClick={reset} style={{marginLeft:8}}>Reset</button>
+          <span style={{marginLeft:12}}>Token: <code style={{fontSize:18}}>{token || '—'}</code></span>
+        </div>
+        <div style={{marginTop:12, display:'flex', gap:16, alignItems:'center', flexWrap:'wrap'}}>
+          <div style={styles.qrBox}>
+            {joinURL ? <QRCode value={joinURL} size={240} level="M" includeMargin /> : <span style={{opacity:.6}}>QR</span>}
+          </div>
+          <div style={{fontSize:14, flex:1, minWidth:260}}>
+            <div><b>Status:</b> {status}</div>
+            <div style={{marginTop:6}}>Share this link:</div>
+            <input
+              value={joinURL}
+              readOnly
+              onClick={e=>e.currentTarget.select()}
+              placeholder="(after Create Session)"
+              style={styles.inputFull}
+            />
+            <div style={{marginTop:6, display:'flex', gap:8, alignItems:'center'}}>
+              <button onClick={()=>copy(joinURL)} disabled={!joinURL}>Copy URL</button>
+              {copied && <span style={{color:'#2e7d32'}}>{copied}</span>}
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <h3>Log</h3>
+      <pre style={styles.log}>{logs.join('\n') || '—'}</pre>
+    </Layout>
+  );
+}
+
+function JoinPage() {
+  const { setToken, token, status, connected, joinReceiver, reset, logs } = useConn();
+  const [input, setInput] = useState('');
+  const nav = useNavigate();
+  const loc = useLocation();
+
   useEffect(() => {
-    const qs = new URLSearchParams(location.search);
+    const qs = new URLSearchParams(loc.search);
+    const t = qs.get('t') || '';
+    const auto = qs.get('auto') === '1';
+
+    // #qr= base64url(JSON:{t,...}) からも拾う
     const hs = new URLSearchParams(location.hash.slice(1));
     const qr = hs.get('qr');
-    const tQ = qs.get('t');
-
+    let t2 = t;
     if (qr) {
       try {
         const obj = JSON.parse(ub64url(qr));
-        if (obj.t) {
-          const cleaned = String(obj.t).replace(/\D/g,'').slice(0,6);
-          setToken(cleaned);
-          log('[qr] token from hash JSON:', cleaned);
-          if ((obj.a|0) === 1) {
-            if (obj.r === 'start') {
-              setConn({ role: 'sender', phase: 'signaling', ice: 'new', dc: 'closed' });
-              startSender(cleaned).catch(e => log('[sender] error:', e.message));
-            } else {
-              setConn({ role: 'receiver', phase: 'waiting-offer', ice: 'new', dc: 'closed' });
-              setTimeout(() => joinReceiver(), 0);
-            }
-          }
-          return;
-        }
-      } catch (e) { log('[qr] parse error', e.message); }
+        if (obj?.t && TOKEN_RE.test(String(obj.t))) t2 = String(obj.t);
+      } catch {}
     }
-    const roleQ = qs.get('role'); const autoQ = qs.get('auto');
-    if (tQ) {
-      const cleaned = String(tQ).replace(/\D/g,'').slice(0,6);
-      setToken(cleaned);
-      log('[qr] token from query:', cleaned);
-      if (autoQ === '1') {
-        if (roleQ === 'start') {
-          setConn({ role: 'sender', phase: 'signaling', ice: 'new', dc: 'closed' });
-          startSender(cleaned).catch(e => log('[sender] error:', e.message));
-        } else {
-          setConn({ role: 'receiver', phase: 'waiting-offer', ice: 'new', dc: 'closed' });
-          setTimeout(() => joinReceiver(), 0);
-        }
-      }
+
+    if (TOKEN_RE.test(t2)) {
+      setInput(t2); setToken(t2);
+      if (auto || qr) joinReceiver(t2).catch(console.error);
     }
     // eslint-disable-next-line
   }, []);
 
-  // token が6桁になったら自動接続（未接続のみ）
   useEffect(() => {
-    if (!isTokenValid) { autoStartedRef.current = false; return; }
-    if (pcRef.current || connectedRef.current) return;
-    if (autoStartedRef.current) return;
-    autoStartedRef.current = true;
-    log('[auto] token ready -> Join as Receiver');
-    setConn({ role: 'receiver', phase: 'waiting-offer', ice: 'new', dc: 'closed' });
-    joinReceiver().catch(e => {
-      log('[receiver] error:', e.message);
-      setConn(c => ({ ...c, phase: 'error' }));
-    });
-    // eslint-disable-next-line
-  }, [token]);
+    if (connected && (token || input)) nav(`/room/${token || input}`, { replace:true });
+  }, [connected, token, input, nav]);
 
-  // ===== UI parts =====
-  const PhaseBadge = ({conn}) => {
-    const map = {
-      idle: {label:'Idle', bg:'#eee', fg:'#333'},
-      'waiting-offer': {label:'Waiting Offer', bg:'#fff4cc', fg:'#7a5b00'},
-      'waiting-answer': {label:'Waiting Answer', bg:'#fff4cc', fg:'#7a5b00'},
-      signaling: {label:'Signaling', bg:'#e8f0fe', fg:'#1a53bf'},
-      connecting: {label:'Connecting', bg:'#e6fffa', fg:'#046c4e'},
-      connected: {label:'Connected', bg:'#daf5d7', fg:'#1a7f37'},
-      closed: {label:'Closed', bg:'#f1f5f9', fg:'#334155'},
-      error: {label:'Error', bg:'#fde2e2', fg:'#b42318'},
-    };
-    const s = map[conn.phase] || map.idle;
-    return (
-      <span style={{padding:'4px 10px', borderRadius:999, background:s.bg, color:s.fg, fontWeight:600}}>
-        {s.label}
-      </span>
-    );
+  const onChange = (v) => {
+    const vv = v.replace(/\D/g, '').slice(0,6);
+    setInput(vv);
+    setToken(vv);
+    if (TOKEN_RE.test(vv)) joinReceiver(vv).catch(console.error);
   };
-
-  const humanSize = (n=0) => {
-    const units=['B','KB','MB','GB']; let i=0, x=n;
-    while (x>=1024 && i<units.length-1){ x/=1024; i++; }
-    return `${x.toFixed(x<10 && i>0 ? 1 : 0)} ${units[i]}`;
-  };
-
-  const dcOpen = dcRef.current && dcRef.current.readyState === 'open';
 
   return (
-    <div style={{fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif', maxWidth:1000, margin:'24px auto', padding:'0 16px'}}>
-      <h1 style={{marginBottom:8}}>XDrop – WebRTC</h1>
-
-      <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', marginBottom:8}}>
-        <PhaseBadge conn={conn} />
-        <span style={{opacity:.8}}>Role: <b>{conn.role}</b></span>
-        <span style={{opacity:.8}}>ICE: <b>{conn.ice}</b></span>
-        <span style={{opacity:.8}}>DC: <b>{conn.dc}</b></span>
-        {isTokenValid && <span style={{opacity:.8}}>Token: <b>{token}</b></span>}
-      </div>
-
-      <fieldset>
-        <legend>Controls</legend>
-        <button onClick={createSession}>Create Session</button>{' '}
-        <button onClick={reset}>Reset</button>
-        <div style={{marginTop:8}}>
+    <Layout>
+      <fieldset style={styles.box}>
+        <legend>Join</legend>
+        <div style={styles.row}>
           <input
-            value={token}
-            onChange={e=>setToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputMode="numeric"
-            pattern="\d{6}"
-            placeholder="6-digit token (auto-join)"
-            style={{width:180,padding:6}}
+            value={input}
+            onChange={e=>onChange(e.target.value)}
+            placeholder="Enter 6-digit token"
+            style={{width:220, padding:8, fontSize:18, letterSpacing:2}}
+            inputMode="numeric" pattern="\d*"
           />
+          <button onClick={reset} style={{marginLeft:8}}>Reset</button>
+          <span style={{marginLeft:12}}><b>Status:</b> {status}</span>
         </div>
+        <div style={{marginTop:6, color:'#777'}}>トークン入力（またはQR遷移）で自動接続します。</div>
       </fieldset>
 
-      {/* QR（6桁なら表示） */}
-      <div style={{marginTop:10}}>
-        <div style={{fontSize:13, color:'#444', marginBottom:6}}>
-          他端末でこのQRを読み込むと自動で接続します（Receiverとして参加）
-        </div>
-        <div style={{width:256,height:256,display:'grid',placeItems:'center',border:'1px dashed #ccc',borderRadius:8}}>
-          {qrValue ? <QRCode value={qrValue} size={240} level="M" includeMargin={true} /> : <span style={{color:'#888'}}>Token を作成/入力すると表示</span>}
-        </div>
-      </div>
-
-      {/* 送信 */}
-      <fieldset style={{marginTop:12}}>
-        <legend>Send</legend>
-        <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
-          <input ref={fileRef} type="file" onChange={onChooseFile} />
-          <button onClick={clickSend} disabled={!selectedFile && !fileRef.current?.files?.[0]}>
-            Send
-          </button>
-          <span style={{opacity:.8}}>
-            {dcOpen ? 'DataChannel: open' : 'DataChannel: not ready'}
-          </span>
-          {selectedFile && <span>Selected: <b>{selectedFile.name}</b> ({humanSize(selectedFile.size)})</span>}
-        </div>
-
-        {/* 送信履歴 */}
-        <div style={{marginTop:10}}>
-          <div style={{fontWeight:600, marginBottom:6}}>Sent</div>
-          {sentFiles.length === 0 ? (
-            <div style={{color:'#666'}}>No sent files yet</div>
-          ) : (
-            <table style={{width:'100%', borderCollapse:'collapse', fontSize:14}}>
-              <thead>
-                <tr style={{textAlign:'left', borderBottom:'1px solid #eee'}}>
-                  <th style={{padding:'6px 4px'}}>Name</th>
-                  <th style={{padding:'6px 4px'}}>Size</th>
-                  <th style={{padding:'6px 4px'}}>Progress</th>
-                  <th style={{padding:'6px 4px'}}>Status</th>
-                  <th style={{padding:'6px 4px'}}>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sentFiles.map(it => {
-                  const pct = it.size ? Math.floor((it.sentBytes||0)*100/it.size) : 0;
-                  const dt = new Date(it.at).toLocaleTimeString();
-                  return (
-                    <tr key={it.id} style={{borderBottom:'1px solid #f4f4f4'}}>
-                      <td style={{padding:'6px 4px', wordBreak:'break-all'}}>{it.name}</td>
-                      <td style={{padding:'6px 4px'}}>{humanSize(it.size)}</td>
-                      <td style={{padding:'6px 4px'}}>{it.status==='sending' ? `${pct}%` : it.status==='done' ? '100%' : it.sentBytes ? `${pct}%` : '-'}</td>
-                      <td style={{padding:'6px 4px'}}>{it.status}</td>
-                      <td style={{padding:'6px 4px'}}>{dt}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </fieldset>
-
-      {/* 受信 */}
-      <fieldset style={{marginTop:12}}>
-        <legend>Received</legend>
-        {receivedFiles.length === 0 ? (
-          <div style={{color:'#666'}}>No received files yet</div>
-        ) : (
-          <table style={{width:'100%', borderCollapse:'collapse', fontSize:14}}>
-            <thead>
-              <tr style={{textAlign:'left', borderBottom:'1px solid #eee'}}>
-                <th style={{padding:'6px 4px'}}>Name</th>
-                <th style={{padding:'6px 4px'}}>Size</th>
-                <th style={{padding:'6px 4px'}}>Time</th>
-                <th style={{padding:'6px 4px'}}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receivedFiles.map(it => (
-                <tr key={it.id} style={{borderBottom:'1px solid #f4f4f4'}}>
-                  <td style={{padding:'6px 4px', wordBreak:'break-all'}}>{it.name}</td>
-                  <td style={{padding:'6px 4px'}}>{humanSize(it.size)}</td>
-                  <td style={{padding:'6px 4px'}}>{new Date(it.at).toLocaleTimeString()}</td>
-                  <td style={{padding:'6px 4px'}}>
-                    <button onClick={()=>clickDownload(it)}>Download</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </fieldset>
-
-      {/* ログ */}
       <h3>Log</h3>
-      <div style={{whiteSpace:'pre-wrap', background:'#fafafa', border:'1px solid #eee', borderRadius:8, padding:10, height:220, overflow:'auto'}}>
-        {logs.join('\n')}
-      </div>
-    </div>
+      <pre style={styles.log}>{logs.join('\n') || '—'}</pre>
+    </Layout>
   );
 }
+
+function RoomPage() {
+  const { token } = useParams();
+  const {
+    connected, status, sendFile, sendText,
+    recvFiles, sentFiles, messages,
+    reset, sendProg, recvProg, recvName, logs
+  } = useConn();
+  const fileRef = useRef(null);
+  const [chat, setChat] = useState('');
+  const { copy } = useClipboard();
+
+  const onSendFile = async () => {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return alert('Choose a file');
+    try { await sendFile(f); } catch (e) { alert(e.message || String(e)); }
+  };
+  const onSendText = async () => {
+    const text = chat.trim();
+    if (!text) return;
+    try { await sendText(text); setChat(''); }
+    catch (e) { alert(e.message || String(e)); }
+  };
+
+  return (
+    <Layout>
+      <fieldset style={styles.box}>
+        <legend>Room</legend>
+        <div style={styles.row}>
+          <div>Token: <b>{token}</b></div>
+          <div style={{marginLeft:12}}><b>Status:</b> {status} {connected ? '✅' : '❌'}</div>
+          <button onClick={reset} style={{marginLeft:'auto'}}>Reset</button>
+        </div>
+
+        <div style={{marginTop:12, display:'grid', gridTemplateColumns:'1fr 1fr', gap:16}}>
+          {/* ===== Send (file) ===== */}
+          <div>
+            <div style={{fontWeight:600}}>Send File</div>
+            <div style={styles.row}>
+              <input ref={fileRef} type="file" />
+              <button onClick={onSendFile} disabled={!connected} style={{marginLeft:8}}>Send File</button>
+            </div>
+            {!sendProg.hidden && <progress value={sendProg.value} max={sendProg.max} style={styles.progress} />}
+            {!sendProg.hidden && (
+              <div style={{textAlign:'right', fontSize:12, color:'#666'}}>
+                {formatBytes(sendProg.value)} / {formatBytes(sendProg.max)}
+              </div>
+            )}
+
+            <div style={{marginTop:12}}>
+              <div style={{fontWeight:600, marginBottom:6}}>Sent files</div>
+              {sentFiles.length===0 ? <div style={{opacity:.6}}>—</div> :
+                <ul style={styles.ul}>
+                  {sentFiles.map((it,i)=>(
+                    <li key={i} style={styles.li}>
+                      <div style={styles.rowBetween}>
+                        <div>{it.name} <span style={styles.dim}>({formatBytes(it.size)})</span></div>
+                        <div style={styles.dim}>{new Date(it.ts).toLocaleTimeString()}</div>
+                      </div>
+                      <div style={styles.rowBetween}>
+                        <progress value={it.bytes} max={it.size||1} style={{width:'100%'}} />
+                        <span style={{marginLeft:8, minWidth:80, textAlign:'right'}}>
+                          {it.done ? 'done' : `${Math.floor((it.bytes/Math.max(1,it.size))*100)}%`}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              }
+            </div>
+          </div>
+
+          {/* ===== Receive (file) ===== */}
+          <div>
+            <div style={{fontWeight:600}}>Receive File</div>
+            <div>File: <b>{recvName}</b></div>
+            {!recvProg.hidden && <progress value={recvProg.value} max={recvProg.max} style={styles.progress} />}
+            {!recvProg.hidden && (
+              <div style={{textAlign:'right', fontSize:12, color:'#666'}}>
+                {formatBytes(recvProg.value)} / {formatBytes(recvProg.max)}
+              </div>
+            )}
+
+            <div style={{marginTop:12}}>
+              <div style={{fontWeight:600, marginBottom:6}}>Downloads</div>
+              {recvFiles.length===0 ? <div style={{opacity:.6}}>—</div> :
+                <ul style={styles.ul}>
+                  {recvFiles.map((f,i)=>(
+                    <li key={i} style={styles.li}>
+                      <div style={styles.rowBetween}>
+                        <div>{f.name} <span style={styles.dim}>({formatBytes(f.size)})</span></div>
+                        <div style={styles.dim}>{new Date(f.ts).toLocaleTimeString()}</div>
+                      </div>
+                      <div style={{marginTop:6, textAlign:'right'}}>
+                        <a href={f.blobUrl} download={safeFilename(f.name)} style={styles.btnLink}>Download again</a>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              }
+            </div>
+          </div>
+        </div>
+
+        {/* ===== Chat (text / URL) ===== */}
+        <div style={{marginTop:18}}>
+          <div style={{fontWeight:700, marginBottom:8}}>Chat (Text / URL)</div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr auto', gap:8}}>
+            <input
+              value={chat}
+              onChange={e=>setChat(e.target.value)}
+              placeholder="Type message or paste URL and press Enter"
+              style={styles.inputFull}
+            />
+            <button onClick={onSendText} disabled={!connected}>Send</button>
+          </div>
+
+          <div style={{marginTop:10, maxHeight:260, overflow:'auto', border:'1px solid #eee', borderRadius:8}}>
+            {messages.length===0 ? <div style={{padding:10, opacity:.6}}>No messages yet</div> :
+              <ul style={{...styles.ul, padding:8}}>
+                {messages.map((m,i)=>(
+                  <li key={i} style={{
+                    ...styles.chatItem,
+                    alignSelf: m.dir==='out' ? 'flex-end' : 'flex-start',
+                    background: m.dir==='out' ? '#e8f5e9' : '#f5f5f5'
+                  }}>
+                    <div style={{fontSize:12, color:'#666', marginBottom:2}}>
+                      {m.dir==='out' ? 'You' : 'Peer'} · {new Date(m.ts).toLocaleTimeString()}
+                    </div>
+                    {m.kind==='url'
+                      ? <a href={normalizeURL(m.text)} target="_blank" rel="noreferrer">{m.text}</a>
+                      : <div style={{whiteSpace:'pre-wrap', wordBreak:'break-word'}}>{m.text}</div>
+                    }
+                    <div style={{textAlign:'right', marginTop:6}}>
+                      <button onClick={()=>copy(m.text)} style={{fontSize:12}}>Copy</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            }
+          </div>
+        </div>
+      </fieldset>
+
+      <h3>Log</h3>
+      <pre style={styles.log}>{logs.join('\n') || '—'}</pre>
+    </Layout>
+  );
+}
+
+/* ========== ルーティング ========== */
+function App() {
+  return (
+    <BrowserRouter>
+      <ConnProvider>
+        <Routes>
+          <Route path="/" element={<Navigate to="/start" replace />} />
+          <Route path="/start" element={<StartPage />} />
+          <Route path="/join" element={<JoinPage />} />
+          <Route path="/room/:token" element={<RoomPage />} />
+          <Route path="*" element={<Navigate to="/start" replace />} />
+        </Routes>
+      </ConnProvider>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+
+/* ========== スタイル ========== */
+const styles = {
+  page: { fontFamily:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif', maxWidth:980, margin:'24px auto', padding:'0 16px' },
+  header: { display:'flex', alignItems:'center', gap:12, marginBottom:12 },
+  nav: { display:'flex', gap:10 },
+  headerRight: { marginLeft:'auto', fontSize:13, opacity:.85 },
+  box: { border:'1px solid #eee', borderRadius:12, padding:12, background:'#fff' },
+  row: { display:'flex', alignItems:'center', flexWrap:'wrap' },
+  rowBetween: { display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 },
+  inputFull: { width:'100%', padding:8 },
+  qrBox: { width:256, height:256, display:'grid', placeItems:'center', border:'1px dashed #ccc', borderRadius:8, background:'#fafafa' },
+  progress: { width:'100%', display:'block', marginTop:8 },
+  ul: { listStyle:'none', padding:0, margin:0 },
+  li: { border:'1px solid #eee', borderRadius:8, padding:'8px 10px', marginBottom:8, background:'#fff' },
+  log: { whiteSpace:'pre-wrap', background:'#fafafa', border:'1px solid #eee', borderRadius:8, padding:10, height:220, overflow:'auto' },
+  dim: { color:'#777' },
+  btnLink: { padding:'6px 10px', border:'1px solid #ddd', borderRadius:6, textDecoration:'none' },
+  chatItem: { maxWidth:'80%', padding:'8px 10px', borderRadius:10, margin:'6px 0' },
+};
