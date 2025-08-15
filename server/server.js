@@ -18,10 +18,9 @@ setInterval(() => {
   for (const [k, v] of store) if (now - v.at > TTL_MS) store.delete(k);
 }, 60 * 1000);
 
-// ---- 6桁“数字だけ”トークン ----
+// ---- 6桁トークン ----
 const TOKEN_LEN = 6;
 function newNumericToken() {
-  // 100000–999999
   return String(
     Math.floor(10 ** (TOKEN_LEN - 1) + Math.random() * 9 * 10 ** (TOKEN_LEN - 1))
   );
@@ -68,7 +67,6 @@ app.get('/api/answer', (req, res) => {
   res.json({ sdp: slot.answer });
 });
 
-// デバッグ用
 app.get('/api/debug', (req, res) => {
   const { token } = req.query;
   const slot = store.get(token);
@@ -76,7 +74,6 @@ app.get('/api/debug', (req, res) => {
   res.json({ hasOffer: !!slot.offer, hasAnswer: !!slot.answer, updatedAt: slot.at });
 });
 
-// ---- SPA フォールバック（最後に）----
 app.get(/^\/(?!api\/).*/, (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
