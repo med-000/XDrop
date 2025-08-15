@@ -1,26 +1,36 @@
+// server/server.js
 const express = require('express');
 const path = require('path');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-const PUBLIC_DIR = path.join(__dirname, '..', 'client', 'dist');
-app.use(express.static(PUBLIC_DIR));
+// ---- dist 配信（Vite build 出力）----
+const PUBLIC_DIR = path.resolve(__dirname, '../client/dist');
 console.log('[static dir]', PUBLIC_DIR);
+app.use(express.static(PUBLIC_DIR));
 
+// ---- メモリ内ストア（10分TTL）----
 const store = new Map();
-const TTL_MS = 10 * 60 * 1000; // 10分
+const TTL_MS = 10 * 60 * 1000;
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of store) {
-    if (now - v.at > TTL_MS) store.delete(k);
-  }
+  for (const [k, v] of store) if (now - v.at > TTL_MS) store.delete(k);
 }, 60 * 1000);
 
-const newToken = () => Math.random().toString(36).slice(2, 8);
+// ---- 6桁“数字だけ”トークン ----
+const TOKEN_LEN = 6;
+function newNumericToken() {
+  // 100000–999999
+  return String(
+    Math.floor(10 ** (TOKEN_LEN - 1) + Math.random() * 9 * 10 ** (TOKEN_LEN - 1))
+  );
+}
 
+// ===== API =====
 app.post('/api/session', (_req, res) => {
-  const token = newToken();
+  let token;
+  do { token = newNumericToken(); } while (store.has(token));
   store.set(token, { offer: null, answer: null, at: Date.now() });
   res.json({ token });
 });
@@ -33,6 +43,7 @@ app.post('/api/offer', (req, res) => {
   slot.offer = sdp; slot.at = Date.now();
   res.json({ ok: true });
 });
+
 app.get('/api/offer', (req, res) => {
   const { token } = req.query;
   const slot = store.get(token);
@@ -48,6 +59,7 @@ app.post('/api/answer', (req, res) => {
   slot.answer = sdp; slot.at = Date.now();
   res.json({ ok: true });
 });
+
 app.get('/api/answer', (req, res) => {
   const { token } = req.query;
   const slot = store.get(token);
@@ -56,6 +68,7 @@ app.get('/api/answer', (req, res) => {
   res.json({ sdp: slot.answer });
 });
 
+// デバッグ用
 app.get('/api/debug', (req, res) => {
   const { token } = req.query;
   const slot = store.get(token);
@@ -63,8 +76,8 @@ app.get('/api/debug', (req, res) => {
   res.json({ hasOffer: !!slot.offer, hasAnswer: !!slot.answer, updatedAt: slot.at });
 });
 
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) return res.status(404).end();
+// ---- SPA フォールバック（最後に）----
+app.get(/^\/(?!api\/).*/, (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
