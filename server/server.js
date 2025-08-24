@@ -1,16 +1,13 @@
-// server/server.js
 const express = require('express');
 const path = require('path');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-// ---- dist 配信（Vite build 出力）----
 const PUBLIC_DIR = path.resolve(__dirname, '../client/dist');
 console.log('[static dir]', PUBLIC_DIR);
 app.use(express.static(PUBLIC_DIR));
 
-// ---- メモリ内ストア（10分TTL）----
 const store = new Map();
 const TTL_MS = 10 * 60 * 1000;
 setInterval(() => {
@@ -18,7 +15,6 @@ setInterval(() => {
   for (const [k, v] of store) if (now - v.at > TTL_MS) store.delete(k);
 }, 60 * 1000);
 
-// ---- 6桁トークン ----
 const TOKEN_LEN = 6;
 function newNumericToken() {
   return String(
@@ -26,7 +22,6 @@ function newNumericToken() {
   );
 }
 
-// ===== API =====
 app.post('/api/session', (_req, res) => {
   let token;
   do { token = newNumericToken(); } while (store.has(token));
