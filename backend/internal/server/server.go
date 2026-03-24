@@ -7,5 +7,5 @@ import (
 
 
 func Server(r *gin.Engine){
-	r.GET("/ws/:roomId",handler.WsServer)
+	r.GET("/ws/:roomId",handler.WsHandler)
 }
