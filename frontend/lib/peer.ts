@@ -13,15 +13,17 @@ export const createPeerConnection = (
   channels: Channels,
   onMessage: (msg: string) => void,
 ) => {
+  console.log("create peerConnection");
   //iceが見つかるイベント(iceが見つかるたびに呼び出される)
   pc.onicecandidate = (event) => {
     //ice見つからなかったら何も返さない
     if (!event.candidate) {
-      console.log("candidateが見つかりませんでした");
+      console.log("candidate not found");
       return;
     }
 
     //見つかればcandidateを送る
+    console.log("send candidate");
     sendSignal(ws, {
       type: "candidate",
       candidate: event.candidate,
@@ -55,7 +57,6 @@ export const startOffer = async (
   channels.chat = chatdc;
   channels.file = filedc;
 
-  // --- イベント設定 ---
   setupDataChannel(chatdc, onMessage);
   setupDataChannel(filedc, onMessage);
 
@@ -71,7 +72,7 @@ export const startOffer = async (
     type: "offer",
     sdp: offer.sdp,
   });
-  console.log("offer送ったよ");
+  console.log("send offer");
 };
 
 //offer受信
@@ -80,6 +81,7 @@ export const handleOffer = async (
   pc: RTCPeerConnection,
   sdp: string,
 ) => {
+  console.log("get offer");
   //自分に受け取った情報をsetting
   await pc.setRemoteDescription({
     type: "offer",
@@ -99,10 +101,12 @@ export const handleOffer = async (
     type: "answer",
     sdp: answer.sdp,
   });
+  console.log("send answer");
 };
 
 //answer受信
 export const handleAnswer = async (pc: RTCPeerConnection, sdp: string) => {
+  console.log("get answer");
   await pc.setRemoteDescription({
     type: "answer",
     sdp: sdp,
@@ -115,5 +119,6 @@ export const handleCandidate = async (
   candidate: RTCIceCandidateInit,
 ) => {
   if (!pc) return;
+  console.log("get candidate");
   await pc.addIceCandidate(candidate);
 };

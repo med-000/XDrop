@@ -48,7 +48,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
           break;
 
         case "ready":
-          console.log("readyきた");
+          console.log("ready");
 
           if (roleRef.current === "offer") {
             startOffer(ws, pc, channelsRef.current, handleMessage);
@@ -79,12 +79,12 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     const dc = channelsRef.current.chat;
 
     if (!dc) {
-      console.log("dcがない");
+      console.log("dc not found");
       return;
     }
 
     if (dc.readyState !== "open") {
-      console.log("dc openじゃない");
+      console.log("dc not open");
       return;
     }
 
