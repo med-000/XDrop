@@ -1,0 +1,72 @@
+package handler
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/med-000/xdrop/internal/model"
+)
+
+var rooms = map[string][]*model.Client{}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+func WsHandler(c *gin.Context) {
+	roomId := c.Param("roomId")
+	
+	//ws/:roomIdが呼ばれたらwsにupgrade
+	conn, err := upgrader.Upgrade(c.Writer,c.Request,nil)
+	if err != nil {
+		fmt.Println("WebSocket upgrade error:", err)
+		return
+	}
+	fmt.Println("Connected:",roomId)
+
+
+	//処理が終わったら接続切る
+	defer func() {
+		conn.Close()
+		fmt.Println("closed")
+	}()
+
+	client := &model.Client{
+		ID:   uuid.New().String(),
+		Conn: conn,
+		RoomId: roomId,
+	}
+
+	//二人以上入ってきたら強制切断
+	if len(rooms[roomId]) >= 2 {
+		conn.Close()
+		fmt.Println("Invalid connection: 二人以上は入れません")
+		return
+	}
+	//roomにclientを追加
+	rooms[roomId] = append(rooms[roomId], client)
+
+	for{
+		_,msg, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Println("Read Message Error:",err)
+			break
+		}
+
+
+		//roomIdの中の数だけ実行
+		for _, c := range rooms[roomId] {
+			//入ってきた人の処理
+			if c.Conn != conn {
+				fmt.Println("send:",c.ID,string(msg))
+			}
+			//入ってきた人じゃなければ入ってきてない人にmessageを送る
+			if c.Conn != conn {
+				c.Conn.WriteMessage(websocket.TextMessage,msg)
+				fmt.Println("recv:",c.ID,string(msg))
+			}
+		}
+	}
+}
