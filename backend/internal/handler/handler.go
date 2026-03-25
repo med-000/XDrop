@@ -28,9 +28,25 @@ func WsHandler(c *gin.Context) {
 
 
 	//処理が終わったら接続切る
+	//roomIDを消す
 	defer func() {
 		conn.Close()
-		fmt.Println("closed")
+		clients := rooms[roomId]
+        newClients := []*model.Client{}
+    
+        for _, c := range clients {
+          if c.Conn != conn {
+            newClients = append(newClients, c)
+          }
+        }
+    
+        if len(newClients) == 0 {
+          delete(rooms, roomId)
+        } else {
+          rooms[roomId] = newClients
+        }
+    
+        fmt.Println("closed & removed from room:", roomId)
 	}()
 
 	client := &model.Client{
@@ -42,7 +58,7 @@ func WsHandler(c *gin.Context) {
 	//二人以上入ってきたら強制切断
 	if len(rooms[roomId]) >= 2 {
 		conn.Close()
-		fmt.Println("Invalid connection: 二人以上は入れません")
+		fmt.Println("Invalid connection: Only two users are allowed.")
 		return
 	}
 	//roomにclientを追加
@@ -68,7 +84,6 @@ func WsHandler(c *gin.Context) {
 	  for _, c := range rooms[roomId] {
 	    c.Conn.WriteJSON(map[string]string{
 	      "type": "ready",
-		  "state": "ok",
 	    })
 	  }
 	}
