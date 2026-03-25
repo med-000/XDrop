@@ -29,3 +29,11 @@ export type Channels = {
 };
 
 export type Status = "waiting" | "ready" | "connected";
+
+export type PeerHandlers = {
+  onChat?: (text: string) => void;
+
+  onFileMeta?: (meta: { name: string; size: number }) => void;
+  onFileChunk?: (chunk: ArrayBuffer) => void;
+  onFileDone?: () => void;
+};

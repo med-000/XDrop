@@ -9,8 +9,9 @@ import {
   createPeerConnection,
 } from "@/lib/peer";
 import { QRCodeSVG } from "qrcode.react";
-
-import { Channels, Status } from "@/lib/types";
+import { createFileReceiver } from "@/lib/handler";
+import { createSender } from "@/lib/sender";
+import { Channels, Status, PeerHandlers } from "@/lib/types";
 import { usePathname } from "next/navigation";
 
 type RoomIdPageProps = {
@@ -21,16 +22,21 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const initialized = useRef(false);
   const channelsRef = useRef<Channels>({});
   const roleRef = useRef<"offer" | "answer" | null>(null);
+  const senderRef = useRef<ReturnType<typeof createSender> | null>(null);
 
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>("waiting");
+  const [receivedFiles, setReceivedFiles] = useState<
+    { name: string; url: string }[]
+  >([]);
   const pathname = usePathname();
   const url = `http://localhost:3000${pathname}`;
 
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    senderRef.current = createSender(channelsRef.current);
 
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://localhost:8080/ws/${roomId}`);
@@ -52,11 +58,21 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
       }
     };
 
-    const handleMessage = (msg: string) => {
-      setMessages((prev) => [`other> ${msg}`, ...prev]);
+    const fileReceiver = createFileReceiver((file) => {
+      setReceivedFiles((prev) => [file, ...prev]);
+    });
+
+    const handlers: PeerHandlers = {
+      onChat: (text) => {
+        setMessages((prev) => [`other> ${text}`, ...prev]);
+      },
+
+      onFileMeta: fileReceiver.onMeta,
+      onFileChunk: fileReceiver.onChunk,
+      onFileDone: fileReceiver.onDone,
     };
 
-    createPeerConnection(ws, pc, channelsRef.current, handleMessage);
+    createPeerConnection(ws, pc, channelsRef.current, handlers);
 
     ws.onopen = () => {
       console.log("ws connected");
@@ -75,7 +91,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
           console.log("ready");
 
           if (roleRef.current === "offer") {
-            startOffer(ws, pc, channelsRef.current, handleMessage);
+            startOffer(ws, pc, channelsRef.current, handlers);
           }
           break;
         case "offer":
@@ -98,21 +114,12 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
       channelsRef.current = {};
     };
   }, [roomId]);
-
   const sendMessage = () => {
-    const dc = channelsRef.current.chat;
+    const sender = createSender(channelsRef.current);
 
-    if (!dc) {
-      console.log("dc not found");
-      return;
-    }
+    const ok = sender.sendChat(input);
 
-    if (dc.readyState !== "open") {
-      console.log("dc not open");
-      return;
-    }
-
-    dc.send(input);
+    if (!ok) return;
 
     setMessages((prev) => [`me> ${input}`, ...prev]);
     setInput("");
@@ -136,6 +143,31 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
       <div>
         {messages.map((m, i) => (
           <div key={i}>{m}</div>
+        ))}
+      </div>
+
+      <input
+        type='file'
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+
+          const sender = createSender(channelsRef.current);
+          const ok = await sender.sendFile(file);
+
+          if (!ok) {
+            console.log("file send failed");
+          }
+        }}
+      />
+
+      {/* received files */}
+      <div>
+        <div>Received Files</div>
+        {receivedFiles.map((f, i) => (
+          <a key={i} href={f.url} download={f.name}>
+            {f.name}
+          </a>
         ))}
       </div>
     </div>

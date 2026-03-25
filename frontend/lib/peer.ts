@@ -1,4 +1,4 @@
-import { PeerData, Channels } from "./types";
+import { PeerData, Channels, PeerHandlers } from "./types";
 import { setupDataChannel } from "./datachannel";
 
 //websocketにdataを送る
@@ -11,7 +11,7 @@ export const createPeerConnection = (
   ws: WebSocket,
   pc: RTCPeerConnection,
   channels: Channels,
-  onMessage: (msg: string) => void,
+  handlers: PeerHandlers,
 ) => {
   console.log("create peerConnection");
   //iceが見つかるイベント(iceが見つかるたびに呼び出される)
@@ -40,7 +40,7 @@ export const createPeerConnection = (
       channels.file = dc;
     }
 
-    setupDataChannel(dc, onMessage);
+    setupDataChannel(dc, handlers);
   };
 };
 
@@ -49,7 +49,7 @@ export const startOffer = async (
   ws: WebSocket,
   pc: RTCPeerConnection,
   channels: Channels,
-  onMessage: (msg: string) => void,
+  handlers: PeerHandlers,
 ) => {
   const chatdc = pc.createDataChannel("chat");
   const filedc = pc.createDataChannel("file");
@@ -57,8 +57,8 @@ export const startOffer = async (
   channels.chat = chatdc;
   channels.file = filedc;
 
-  setupDataChannel(chatdc, onMessage);
-  setupDataChannel(filedc, onMessage);
+  setupDataChannel(chatdc, handlers);
+  setupDataChannel(filedc, handlers);
 
   const offer = await pc.createOffer();
   if (!offer.sdp) {
