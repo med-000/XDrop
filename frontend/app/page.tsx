@@ -17,9 +17,9 @@ export default function JoinRoom() {
   };
 
   return (
-    <div className='flex items-center justify-center min-h-screen bg-white'>
-      <div className='bg-white rounded-lg shadow-lg p-8 max-w-md w-full'>
-        <h1 className='text-3xl font-bold text-black mb-2 text-center'>
+    <div className='flex items-start justify-center min-h-full bg-white px-4 pt-20 pb-8'>
+      <div className='bg-white border border-gray-300 rounded-xl shadow-xl p-8 max-w-md w-full'>
+        <h1 className='text-3xl font-bold text-black mb-2 text-center tracking-wide'>
           XDrop
         </h1>
         <p className='text-center text-gray-600 mb-8'>
@@ -35,7 +35,7 @@ export default function JoinRoom() {
               value={roomId}
               onChange={(e) => setRoomId(e.target.value)}
               placeholder='ルームIDを入力...'
-              className='w-full px-4 py-2 border border-gray-300 bg-white text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+              className='w-full px-4 py-2 border border-gray-300 bg-white text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500'
             />
           </div>
 
@@ -53,7 +53,7 @@ export default function JoinRoom() {
           </p>
           <Link
             href='/room'
-            className='block w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-center shadow-md hover:shadow-lg'
+            className='block w-full px-4 py-2 bg-gray-800 hover:bg-black text-white font-bold rounded-lg transition-colors text-center shadow-md hover:shadow-lg border border-gray-700'
           >
             新しいルームを作成
           </Link>

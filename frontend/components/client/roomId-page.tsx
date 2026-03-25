@@ -163,9 +163,9 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   };
 
   return (
-    <div className='h-screen bg-white overflow-y-auto'>
+    <div className='h-full bg-stone-100 overflow-y-auto'>
       <div className='max-w-3xl mx-auto p-6 space-y-6'>
-        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+        <section className='bg-white border border-gray-300 rounded-xl p-4 shadow-sm'>
           <h2 className='text-sm font-semibold text-black mb-2 uppercase tracking-wide'>
             接続状態
           </h2>
@@ -177,11 +177,11 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
         </section>
 
         {status !== "connected" && (
-          <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+          <section className='bg-white border border-gray-300 rounded-xl p-4 shadow-sm'>
             <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
               QRコード
             </h2>
-            <div className='bg-white rounded-lg border border-gray-200 p-4 flex justify-center'>
+            <div className='bg-stone-50 rounded-lg border border-gray-300 p-4 flex justify-center'>
               <QRCodeSVG
                 value={url}
                 size={220}
@@ -192,7 +192,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
           </section>
         )}
 
-        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+        <section className='bg-white border border-gray-300 rounded-xl p-4 shadow-sm'>
           <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
             共有用URL
           </h2>
@@ -205,14 +205,14 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
             <button
               type='button'
               onClick={() => copyText(url, "url")}
-              className='px-3 py-2 text-sm bg-white hover:bg-gray-100 text-black rounded border border-gray-300 whitespace-nowrap'
+              className='px-3 py-2 text-sm bg-neutral-900 hover:bg-black text-white rounded border border-neutral-900 whitespace-nowrap'
             >
               {copiedTarget === "url" ? "コピー済み" : "コピー"}
             </button>
           </div>
         </section>
 
-        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+        <section className='bg-white border border-gray-300 rounded-xl p-4 shadow-sm'>
           <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
             roomId
           </h2>
@@ -225,14 +225,14 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
             <button
               type='button'
               onClick={() => copyText(roomId, "roomId")}
-              className='px-3 py-2 text-sm bg-white hover:bg-gray-100 text-black rounded border border-gray-300 whitespace-nowrap'
+              className='px-3 py-2 text-sm bg-neutral-900 hover:bg-black text-white rounded border border-neutral-900 whitespace-nowrap'
             >
               {copiedTarget === "roomId" ? "コピー済み" : "コピー"}
             </button>
           </div>
         </section>
 
-        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4'>
+        <section className='bg-white border border-gray-300 rounded-xl p-4 space-y-4 shadow-sm'>
           <h2 className='text-sm font-semibold text-black uppercase tracking-wide'>
             ファイル送信
           </h2>
@@ -241,7 +241,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
             <div className='flex gap-3'>
               <label
                 htmlFor='file-input'
-                className='flex-1 flex items-center justify-center px-4 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-lg cursor-pointer transition-all font-medium border border-gray-300 hover:border-gray-400'
+                className='flex-1 flex items-center justify-center px-4 py-2 bg-stone-200 hover:bg-stone-300 text-black rounded-lg cursor-pointer transition-all font-medium border border-gray-400'
               >
                 ファイルを選択
               </label>
@@ -258,7 +258,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
                 type='button'
                 onClick={sendSelectedFile}
                 disabled={!selectedFile}
-                className='px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition-all'
+                className='px-4 py-2 bg-neutral-900 hover:bg-black disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition-all'
               >
                 ファイルを送信
               </button>
@@ -281,7 +281,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
                     key={i}
                     href={f.url}
                     download={f.name}
-                    className='block px-4 py-3 text-sm bg-white hover:bg-gray-100 text-blue-600 hover:text-blue-700 rounded-lg transition-all truncate font-medium border border-gray-200 hover:border-gray-300'
+                    className='block px-4 py-3 text-sm bg-stone-50 hover:bg-stone-100 text-gray-900 rounded-lg transition-all truncate font-medium border border-gray-300'
                   >
                     📥 {f.name}
                   </a>
@@ -299,7 +299,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
                 {sentFiles.map((name, i) => (
                   <div
                     key={`${name}-${i}`}
-                    className='block px-4 py-3 text-sm bg-white text-black rounded-lg truncate font-medium border border-gray-200'
+                    className='block px-4 py-3 text-sm bg-stone-50 text-black rounded-lg truncate font-medium border border-gray-300'
                   >
                     📤 {name}
                   </div>
@@ -309,12 +309,12 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
           )}
         </section>
 
-        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4'>
+        <section className='bg-white border border-gray-300 rounded-xl p-4 space-y-4 shadow-sm'>
           <h2 className='text-sm font-semibold text-black uppercase tracking-wide'>
             チャット
           </h2>
 
-          <div className='bg-white border border-gray-200 rounded-lg p-4 h-[52vh] overflow-y-auto space-y-3'>
+          <div className='bg-stone-50 border border-gray-300 rounded-lg p-4 h-[52vh] overflow-y-auto space-y-3'>
             {messages.length === 0 ? (
               <p className='text-sm text-gray-500'>
                 メッセージはまだありません
@@ -328,8 +328,8 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
                   <div
                     className={`max-w-xs px-4 py-2 rounded-lg shadow-sm ${
                       m.startsWith("me>")
-                        ? "bg-blue-500 text-white rounded-br-none"
-                        : "bg-gray-200 text-black rounded-bl-none"
+                        ? "bg-neutral-900 text-white rounded-br-none"
+                        : "bg-stone-300 text-black rounded-bl-none"
                     }`}
                   >
                     <p className='text-sm'>
@@ -347,11 +347,11 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder='メッセージを入力...'
-              className='flex-1 px-4 py-2 border border-gray-300 bg-white text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500'
+              className='flex-1 px-4 py-2 border border-gray-400 bg-white text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-800 focus:border-transparent placeholder-gray-500'
             />
             <button
               onClick={sendMessage}
-              className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition-all shadow-sm'
+              className='px-6 py-2 bg-neutral-900 hover:bg-black text-white rounded-lg font-bold transition-all shadow-sm'
             >
               送信
             </button>
