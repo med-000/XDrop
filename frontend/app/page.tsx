@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function JoinRoom() {
   const [roomId, setRoomId] = useState("");
@@ -16,13 +17,48 @@ export default function JoinRoom() {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <input
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        placeholder='room id'
-      />
-      <button type='submit'>Join</button>
-    </form>
+    <div className='flex items-center justify-center min-h-screen bg-white'>
+      <div className='bg-white rounded-lg shadow-lg p-8 max-w-md w-full'>
+        <h1 className='text-3xl font-bold text-black mb-2 text-center'>
+          XDrop
+        </h1>
+        <p className='text-center text-gray-600 mb-8'>
+          ファイル転送アプリケーション
+        </p>
+
+        <form onSubmit={handleSubmit} className='space-y-4'>
+          <div>
+            <label className='block text-sm font-semibold text-black mb-2'>
+              ルームID
+            </label>
+            <input
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              placeholder='ルームIDを入力...'
+              className='w-full px-4 py-2 border border-gray-300 bg-white text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+            />
+          </div>
+
+          <button
+            type='submit'
+            className='w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-lg transition-colors shadow-md hover:shadow-lg'
+          >
+            ルームに参加
+          </button>
+        </form>
+
+        <div className='mt-6 pt-6 border-t border-gray-200'>
+          <p className='text-center text-gray-600 text-sm mb-3'>
+            新しいルームを作成しますか？
+          </p>
+          <Link
+            href='/room'
+            className='block w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-center shadow-md hover:shadow-lg'
+          >
+            新しいルームを作成
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
