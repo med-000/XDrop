@@ -71,6 +71,7 @@ export const startOffer = async (
     type: "offer",
     sdp: offer.sdp,
   });
+  console.log("offer送ったよ");
 };
 
 //offer受信

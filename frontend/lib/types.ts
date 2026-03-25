@@ -1,5 +1,12 @@
 export type PeerData =
   | {
+      type: "ready";
+    }
+  | {
+      type: "role";
+      role: "offer" | "answer";
+    }
+  | {
       type: "offer";
       sdp: string;
     }
