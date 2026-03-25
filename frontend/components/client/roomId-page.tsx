@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Config } from "@/lib/config";
+import { Config, statusLabel } from "@/lib/config";
 import { startOffer } from "@/lib/peer";
 import {
   handleOffer,
@@ -8,8 +8,10 @@ import {
   handleCandidate,
   createPeerConnection,
 } from "@/lib/peer";
+import { QRCodeSVG } from "qrcode.react";
 
 import { Channels, Status } from "@/lib/types";
+import { usePathname } from "next/navigation";
 
 type RoomIdPageProps = {
   roomId: string;
@@ -23,11 +25,9 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>("waiting");
-  const statusLabel = {
-    waiting: "Waiting for another user...",
-    ready: "User joined. Ready to connect.",
-    connected: "Connected 🎉",
-  };
+  const pathname = usePathname();
+  const url = `http://localhost:3000${pathname}`;
+
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -35,6 +35,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${protocol}://localhost:8080/ws/${roomId}`);
     const pc = new RTCPeerConnection(Config);
+
     pc.onconnectionstatechange = () => {
       console.log("connection:", pc.connectionState);
 
@@ -54,6 +55,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     const handleMessage = (msg: string) => {
       setMessages((prev) => [`other> ${msg}`, ...prev]);
     };
+
     createPeerConnection(ws, pc, channelsRef.current, handleMessage);
 
     ws.onopen = () => {
@@ -121,6 +123,8 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
 
       {/* 🔥 状態表示 */}
       <div>Status: {statusLabel[status]}</div>
+      <div>Your URL: {url}</div>
+      <QRCodeSVG value={url} />
 
       {/* 入力 */}
       <input value={input} onChange={(e) => setInput(e.target.value)} />
