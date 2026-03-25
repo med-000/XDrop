@@ -48,6 +48,22 @@ func WsHandler(c *gin.Context) {
 	//roomにclientを追加
 	rooms[roomId] = append(rooms[roomId], client)
 
+	
+	//最初に役割を割り振る
+	if len(rooms[roomId]) == 1 {
+    // 1人目 → offer役
+    conn.WriteJSON(map[string]string{
+        "type": "role",
+        "role": "offer",
+    })
+} else {
+    // 2人目 → answer役
+    conn.WriteJSON(map[string]string{
+        "type": "role",
+        "role": "answer",
+    })
+}
+
 	for{
 		_,msg, err := conn.ReadMessage()
 		if err != nil {
