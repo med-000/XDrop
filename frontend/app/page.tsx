@@ -17,8 +17,8 @@ export default function JoinRoom() {
   };
 
   return (
-    <div className='flex items-start justify-center min-h-full bg-white px-4 pt-20 pb-8'>
-      <div className='bg-white border border-gray-300 rounded-xl shadow-xl p-8 max-w-md w-full'>
+    <div className='min-h-[calc(100vh-3.5rem)] flex items-center justify-center bg-white px-4'>
+      <div className='-translate-y-7 bg-white border border-gray-300 rounded-xl shadow-xl p-8 max-w-md w-full'>
         <h1 className='text-3xl font-bold text-black mb-2 text-center tracking-wide'>
           XDrop
         </h1>
