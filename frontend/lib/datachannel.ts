@@ -1,7 +1,16 @@
-export const setupDataChannel = (channel: RTCDataChannel) => {
+export const setupDataChannel = (
+  channel: RTCDataChannel,
+  onMessage: (msg: string) => void,
+) => {
   channel.onopen = () => {
-    console.log("DataChannel open");
+    console.log(`${channel.label} open`);
   };
 
-  channel.onmessage = (event) => {};
+  channel.onmessage = (event) => {
+    onMessage(event.data);
+  };
+
+  channel.onclose = () => {
+    console.log(`${channel.label} closed`);
+  };
 };

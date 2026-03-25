@@ -1,4 +1,4 @@
-export type peerData =
+export type PeerData =
   | {
       type: "offer";
       sdp: string;
@@ -15,3 +15,8 @@ export type peerData =
       type: "joined";
       role: "offer" | "answer";
     };
+
+export type Channels = {
+  chat?: RTCDataChannel;
+  file?: RTCDataChannel;
+};

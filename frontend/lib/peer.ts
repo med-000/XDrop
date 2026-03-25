@@ -1,20 +1,18 @@
-import { Config } from "./config";
-import { peerData } from "./types";
+import { PeerData, Channels } from "./types";
 import { setupDataChannel } from "./datachannel";
 
-//PeerConnection
-let pc: RTCPeerConnection | null = null;
-//DataConnection
-let dc: RTCDataChannel | null = null;
-
 //websocketにdataを送る
-export const sendSignal = (ws: WebSocket, data: peerData) => {
+export const sendSignal = (ws: WebSocket, data: PeerData) => {
   ws.send(JSON.stringify(data));
 };
 
 //RTCpcconnectionの作成
-export const createPeerConnection = (ws: WebSocket): RTCPeerConnection => {
-  pc = new RTCPeerConnection(Config);
+export const createPeerConnection = (
+  ws: WebSocket,
+  pc: RTCPeerConnection,
+  channels: Channels,
+  onMessage: (msg: string) => void,
+) => {
   //iceが見つかるイベント(iceが見つかるたびに呼び出される)
   pc.onicecandidate = (event) => {
     //ice見つからなかったら何も返さない
@@ -32,21 +30,34 @@ export const createPeerConnection = (ws: WebSocket): RTCPeerConnection => {
 
   //ここの理解が浅い
   pc.ondatachannel = (event) => {
-    dc = event.channel;
+    const dc = event.channel;
 
-    setupDataChannel(dc);
+    if (dc.label === "chat") {
+      channels.chat = dc;
+    } else if (dc.label === "file") {
+      channels.file = dc;
+    }
+
+    setupDataChannel(dc, onMessage);
   };
-
-  return pc;
 };
 
 //offercandidate作成
-export const startOffer = async (ws: WebSocket, pc: RTCPeerConnection) => {
-  createPeerConnection(ws);
+export const startOffer = async (
+  ws: WebSocket,
+  pc: RTCPeerConnection,
+  channels: Channels,
+  onMessage: (msg: string) => void,
+) => {
+  const chatdc = pc.createDataChannel("chat");
+  const filedc = pc.createDataChannel("file");
 
-  dc = pc.createDataChannel("chat");
+  channels.chat = chatdc;
+  channels.file = filedc;
 
-  setupDataChannel(dc);
+  // --- イベント設定 ---
+  setupDataChannel(chatdc, onMessage);
+  setupDataChannel(filedc, onMessage);
 
   const offer = await pc.createOffer();
   if (!offer.sdp) {
@@ -68,8 +79,6 @@ export const handleOffer = async (
   pc: RTCPeerConnection,
   sdp: string,
 ) => {
-  createPeerConnection(ws);
-
   //自分に受け取った情報をsetting
   await pc.setRemoteDescription({
     type: "offer",
