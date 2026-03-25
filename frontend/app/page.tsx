@@ -1,65 +1,125 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useRef } from "react";
 
 export default function Home() {
+  const [logs, setLogs] = useState<string[]>([]);
+  const wsRef = useRef<any>(null);
+  const [connected, setConnected] = useState(false);
+  const [roomId, setRoomId] = useState<string>("123");
+  const [inputRoomId, setInputRoomId] = useState<string>("123");
+
+  const connectWebSocket = (id: string) => {
+    // 既に接続されていたら切断
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    setLogs([]);
+    setRoomId(id);
+
+    const socket = new WebSocket(`ws://localhost:8080/ws/${id}`);
+
+    socket.onopen = () => {
+      console.log("接続成功");
+      setConnected(true);
+      setLogs((prev) => [...prev, `[接続] ws://localhost:8080/ws/${id}`]);
+      socket.send("hello");
+    };
+
+    socket.onmessage = (e) => {
+      console.log("受信:", e.data);
+      setLogs((prev) => [...prev, `[受信] ${e.data}`]);
+    };
+
+    socket.onerror = (error) => {
+      console.error("エラー:", error);
+      setLogs((prev) => [...prev, "[エラー] WebSocket接続失敗"]);
+    };
+
+    socket.onclose = () => {
+      console.log("切断");
+      setConnected(false);
+      setLogs((prev) => [...prev, "[切断] サーバーから切断"]);
+    };
+
+    wsRef.current = socket;
+  };
+
+  const disconnect = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      setConnected(false);
+    }
+  };
+
+  const sendMessage = () => {
+    if (wsRef.current && connected) {
+      const msg = `test message ${Date.now()}`;
+      wsRef.current.send(msg);
+      setLogs((prev) => [...prev, `[送信] ${msg}`]);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className='flex flex-col items-center justify-center min-h-screen bg-zinc-50 p-4'>
+      <div className='w-full max-w-md bg-white rounded-lg shadow-lg p-6'>
+        <h1 className='text-2xl font-bold mb-4'>WebSocket テスト</h1>
+
+        <div className='mb-4'>
+          <label className='block text-sm font-semibold mb-2'>Room ID</label>
+          <div className='flex gap-2'>
+            <input
+              type='text'
+              value={inputRoomId}
+              onChange={(e) => setInputRoomId(e.target.value)}
+              disabled={connected}
+              className='flex-1 px-3 py-2 border border-gray-300 rounded disabled:bg-gray-100'
+              placeholder='例：123'
+            />
+            <button
+              onClick={() => connectWebSocket(inputRoomId)}
+              disabled={connected || !inputRoomId}
+              className='bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-2 px-4 rounded'
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              接続
+            </button>
+            {connected && (
+              <button
+                onClick={disconnect}
+                className='bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded'
+              >
+                切断
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className='mb-4'>
+          <p className='text-sm font-semibold'>
+            ステータス:{" "}
+            <span className={connected ? "text-green-600" : "text-red-600"}>
+              {connected ? `接続中 (Room: ${roomId})` : "切断"}
+            </span>
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <button
+          onClick={sendMessage}
+          disabled={!connected}
+          className='w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold py-2 px-4 rounded mb-4'
+        >
+          メッセージ送信
+        </button>
+
+        <div className='bg-gray-100 border border-gray-300 rounded p-3 h-64 overflow-y-auto'>
+          {logs.map((log, i) => (
+            <div key={i} className='text-xs text-gray-700 font-mono py-1'>
+              {log}
+            </div>
+          ))}
         </div>
-      </main>
+      </div>
     </div>
   );
 }
