@@ -27,3 +27,5 @@ export type Channels = {
   chat?: RTCDataChannel;
   file?: RTCDataChannel;
 };
+
+export type Status = "waiting" | "ready" | "connected";
