@@ -51,18 +51,27 @@ func WsHandler(c *gin.Context) {
 	
 	//最初に役割を割り振る
 	if len(rooms[roomId]) == 1 {
-    // 1人目 → offer役
-    conn.WriteJSON(map[string]string{
-        "type": "role",
-        "role": "offer",
-    })
-} else {
-    // 2人目 → answer役
-    conn.WriteJSON(map[string]string{
-        "type": "role",
-        "role": "answer",
-    })
-}
+	    // 1人目 → offer役
+	    conn.WriteJSON(map[string]string{
+	        "type": "role",
+	        "role": "offer",
+	    })
+	} else {
+	    // 2人目 → answer役
+	    conn.WriteJSON(map[string]string{
+	        "type": "role",
+	        "role": "answer",
+	    })
+	}
+	if len(rooms[roomId]) == 2 {
+	  // 2人揃ったら両方に通知
+	  for _, c := range rooms[roomId] {
+	    c.Conn.WriteJSON(map[string]string{
+	      "type": "ready",
+		  "state": "ok",
+	    })
+	  }
+	}
 
 	for{
 		_,msg, err := conn.ReadMessage()
