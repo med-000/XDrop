@@ -28,7 +28,7 @@ export type Channels = {
   file?: RTCDataChannel;
 };
 
-export type Status = "waiting" | "ready" | "connected";
+export type Status = "waiting" | "ready" | "connected" | "disconnected";
 
 export type PeerHandlers = {
   onChat?: (text: string) => void;

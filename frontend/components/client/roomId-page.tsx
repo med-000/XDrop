@@ -18,7 +18,7 @@ type RoomIdPageProps = {
   roomId: string;
 };
 
-const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
+export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const initialized = useRef(false);
   const channelsRef = useRef<Channels>({});
   const roleRef = useRef<"offer" | "answer" | null>(null);
@@ -28,9 +28,19 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>("waiting");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sentFiles, setSentFiles] = useState<string[]>([]);
   const [receivedFiles, setReceivedFiles] = useState<
     { name: string; url: string }[]
   >([]);
+  const [copiedTarget, setCopiedTarget] = useState<"url" | "roomId" | null>(
+    null,
+  );
+  const statusColorClass: Record<Status, string> = {
+    waiting: "bg-gray-500",
+    ready: "bg-yellow-500",
+    connected: "bg-blue-500",
+    disconnected: "bg-red-500",
+  };
   const pathname = usePathname();
   const url = `http://localhost:3000${pathname}`;
 
@@ -55,7 +65,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
         pc.connectionState === "failed" ||
         pc.connectionState === "closed"
       ) {
-        setStatus("waiting");
+        setStatus("disconnected");
       }
     };
 
@@ -115,9 +125,9 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
       channelsRef.current = {};
     };
   }, [roomId]);
+
   const sendMessage = () => {
     const sender = createSender(channelsRef.current);
-
     const ok = sender.sendChat(input);
 
     if (!ok) return;
@@ -129,117 +139,109 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const sendSelectedFile = async () => {
     if (!selectedFile) return;
 
+    const fileToSend = selectedFile;
     const sender = createSender(channelsRef.current);
-    const ok = await sender.sendFile(selectedFile);
+    const ok = await sender.sendFile(fileToSend);
 
     if (!ok) {
       console.log("file send failed");
       return;
     }
 
+    setSentFiles((prev) => [fileToSend.name, ...prev]);
     setSelectedFile(null);
   };
 
-  return (
-    <div className='flex h-screen bg-white'>
-      {/* サイドバー: URL共有とステータス */}
-      <div className='w-80 border-r border-gray-200 bg-gray-50 p-6 overflow-y-auto shadow-sm flex flex-col'>
-        <div className='space-y-6 flex-1'>
-          {/* ステータス */}
-          <div>
-            <h3 className='text-sm font-semibold text-black mb-2 uppercase tracking-wide'>
-              接続状態
-            </h3>
-            <div className='inline-block px-3 py-1.5 bg-blue-500 text-white text-sm font-bold rounded-full shadow-md'>
-              {statusLabel[status]}
-            </div>
-          </div>
+  const copyText = async (text: string, target: "url" | "roomId") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTarget(target);
+      setTimeout(() => setCopiedTarget(null), 1200);
+    } catch {
+      console.log("copy failed");
+    }
+  };
 
-          {/* QRコードとURL */}
-          <div>
-            <h3 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
-              共有用URL
-            </h3>
-            <div className='bg-white p-4 rounded-lg flex flex-col items-center gap-4 border border-gray-200 shadow-sm'>
+  return (
+    <div className='h-screen bg-white overflow-y-auto'>
+      <div className='max-w-3xl mx-auto p-6 space-y-6'>
+        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+          <h2 className='text-sm font-semibold text-black mb-2 uppercase tracking-wide'>
+            接続状態
+          </h2>
+          <span
+            className={`inline-block px-3 py-1.5 text-white text-sm font-bold rounded-full shadow-sm ${statusColorClass[status]}`}
+          >
+            {statusLabel[status]}
+          </span>
+        </section>
+
+        {status !== "connected" && (
+          <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+            <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
+              QRコード
+            </h2>
+            <div className='bg-white rounded-lg border border-gray-200 p-4 flex justify-center'>
               <QRCodeSVG
                 value={url}
-                size={200}
+                size={220}
                 level='H'
                 includeMargin={true}
-                className='border-4 border-white'
               />
-              <p className='text-xs text-gray-700 text-center break-all font-mono bg-gray-100 px-3 py-2 rounded w-full'>
-                {url}
-              </p>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* メインコンテンツ */}
-      <div className='flex-1 flex flex-col bg-white'>
-        {/* ヘッダー */}
-        <div className='border-b border-gray-200 bg-gray-50 px-6 py-4 shadow-sm'>
-          <h2 className='text-xl font-bold text-black'>チャット</h2>
-        </div>
-
-        {/* メッセージエリア */}
-        <div className='flex-1 overflow-y-auto p-6 space-y-3'>
-          {messages.length === 0 ? (
-            <div className='flex items-center justify-center h-full text-gray-400'>
-              <p className='text-lg'>メッセージはまだありません</p>
-            </div>
-          ) : (
-            messages.map((m, i) => (
-              <div
-                key={i}
-                className={`flex ${m.startsWith("me>") ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-xs px-4 py-2 rounded-lg shadow-sm ${
-                    m.startsWith("me>")
-                      ? "bg-blue-500 text-white rounded-br-none"
-                      : "bg-gray-200 text-black rounded-bl-none"
-                  }`}
-                >
-                  <p className='text-sm'>
-                    {m.startsWith("me>") ? m.slice(4) : m.slice(7)}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* ファイル受信エリア */}
-        {receivedFiles.length > 0 && (
-          <div className='border-t border-gray-200 px-6 py-4 bg-gray-50'>
-            <h4 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
-              受信したファイル
-            </h4>
-            <div className='space-y-2 max-h-32 overflow-y-auto'>
-              {receivedFiles.map((f, i) => (
-                <a
-                  key={i}
-                  href={f.url}
-                  download={f.name}
-                  className='block px-4 py-3 text-sm bg-white hover:bg-gray-100 text-blue-600 hover:text-blue-700 rounded-lg transition-all truncate font-medium border border-gray-200 hover:border-gray-300 shadow-sm'
-                >
-                  📥 {f.name}
-                </a>
-              ))}
-            </div>
-          </div>
+          </section>
         )}
 
-        {/* 入力エリア */}
-        <div className='border-t border-gray-200 p-6 space-y-4 bg-gray-50'>
-          {/* ファイル送信 */}
+        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+          <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
+            共有用URL
+          </h2>
+          <div className='flex items-stretch gap-2'>
+            <input
+              readOnly
+              value={url}
+              className='flex-1 text-sm text-black font-mono bg-white border border-gray-300 rounded px-3 py-2 focus:outline-none'
+            />
+            <button
+              type='button'
+              onClick={() => copyText(url, "url")}
+              className='px-3 py-2 text-sm bg-white hover:bg-gray-100 text-black rounded border border-gray-300 whitespace-nowrap'
+            >
+              {copiedTarget === "url" ? "コピー済み" : "コピー"}
+            </button>
+          </div>
+        </section>
+
+        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+          <h2 className='text-sm font-semibold text-black mb-3 uppercase tracking-wide'>
+            roomId
+          </h2>
+          <div className='flex items-stretch gap-2'>
+            <input
+              readOnly
+              value={roomId}
+              className='flex-1 text-lg font-bold text-black font-mono bg-white border border-gray-300 rounded px-3 py-2 focus:outline-none'
+            />
+            <button
+              type='button'
+              onClick={() => copyText(roomId, "roomId")}
+              className='px-3 py-2 text-sm bg-white hover:bg-gray-100 text-black rounded border border-gray-300 whitespace-nowrap'
+            >
+              {copiedTarget === "roomId" ? "コピー済み" : "コピー"}
+            </button>
+          </div>
+        </section>
+
+        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4'>
+          <h2 className='text-sm font-semibold text-black uppercase tracking-wide'>
+            ファイル送信
+          </h2>
+
           <div className='space-y-2'>
             <div className='flex gap-3'>
               <label
                 htmlFor='file-input'
-                className='flex-1 flex items-center justify-center px-4 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-lg cursor-pointer transition-all font-medium border border-gray-300 hover:border-gray-400 shadow-sm'
+                className='flex-1 flex items-center justify-center px-4 py-2 bg-gray-200 hover:bg-gray-300 text-black rounded-lg cursor-pointer transition-all font-medium border border-gray-300 hover:border-gray-400'
               >
                 ファイルを選択
               </label>
@@ -256,7 +258,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
                 type='button'
                 onClick={sendSelectedFile}
                 disabled={!selectedFile}
-                className='px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition-all shadow-md hover:shadow-lg disabled:shadow-none'
+                className='px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition-all'
               >
                 ファイルを送信
               </button>
@@ -268,7 +270,77 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
             </p>
           </div>
 
-          {/* メッセージ送信 */}
+          {receivedFiles.length > 0 && (
+            <div className='space-y-2'>
+              <h3 className='text-sm font-semibold text-black'>
+                受信したファイル
+              </h3>
+              <div className='space-y-2 max-h-32 overflow-y-auto'>
+                {receivedFiles.map((f, i) => (
+                  <a
+                    key={i}
+                    href={f.url}
+                    download={f.name}
+                    className='block px-4 py-3 text-sm bg-white hover:bg-gray-100 text-blue-600 hover:text-blue-700 rounded-lg transition-all truncate font-medium border border-gray-200 hover:border-gray-300'
+                  >
+                    📥 {f.name}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sentFiles.length > 0 && (
+            <div className='space-y-2'>
+              <h3 className='text-sm font-semibold text-black'>
+                送信したファイル
+              </h3>
+              <div className='space-y-2 max-h-32 overflow-y-auto'>
+                {sentFiles.map((name, i) => (
+                  <div
+                    key={`${name}-${i}`}
+                    className='block px-4 py-3 text-sm bg-white text-black rounded-lg truncate font-medium border border-gray-200'
+                  >
+                    📤 {name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className='bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4'>
+          <h2 className='text-sm font-semibold text-black uppercase tracking-wide'>
+            チャット
+          </h2>
+
+          <div className='bg-white border border-gray-200 rounded-lg p-4 h-[52vh] overflow-y-auto space-y-3'>
+            {messages.length === 0 ? (
+              <p className='text-sm text-gray-500'>
+                メッセージはまだありません
+              </p>
+            ) : (
+              messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`flex ${m.startsWith("me>") ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-xs px-4 py-2 rounded-lg shadow-sm ${
+                      m.startsWith("me>")
+                        ? "bg-blue-500 text-white rounded-br-none"
+                        : "bg-gray-200 text-black rounded-bl-none"
+                    }`}
+                  >
+                    <p className='text-sm'>
+                      {m.startsWith("me>") ? m.slice(4) : m.slice(7)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
           <div className='flex gap-3'>
             <input
               type='text'
@@ -279,12 +351,12 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
             />
             <button
               onClick={sendMessage}
-              className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition-all shadow-md hover:shadow-lg'
+              className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition-all shadow-sm'
             >
               送信
             </button>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

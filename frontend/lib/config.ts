@@ -3,7 +3,8 @@ export const Config = {
 };
 
 export const statusLabel = {
-  waiting: "Waiting for another user...",
-  ready: "User joined. Ready to connect.",
-  connected: "Connected 🎉",
+  waiting: "Waiting",
+  ready: "Ready",
+  connected: "Connected",
+  disconnected: "Disconnected",
 };

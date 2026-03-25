@@ -1,4 +1,4 @@
-import RoomIdPage from "@/components/client/roomId-page";
+import { RoomIdPage } from "@/components/client/roomId-page";
 
 type PageProps = {
   params: Promise<{
