@@ -18,6 +18,7 @@ type RoomIdPageProps = {
 const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
   const initialized = useRef(false);
   const channelsRef = useRef<Channels>({});
+  const roleRef = useRef<"offer" | "answer" | null>(null);
 
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState("");
@@ -26,7 +27,7 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     initialized.current = true;
 
     const protocol = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${protocol}://${location.host}/ws/${roomId}`);
+    const ws = new WebSocket(`${protocol}://localhost:8080/ws/${roomId}`);
     const pc = new RTCPeerConnection(Config);
 
     const handleMessage = (msg: string) => {
@@ -36,12 +37,23 @@ const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
 
     ws.onopen = () => {
       console.log("ws connected");
-      startOffer(ws, pc, channelsRef.current, handleMessage);
     };
     ws.onmessage = async (event) => {
       const msg = JSON.parse(event.data);
 
       switch (msg.type) {
+        case "role":
+          roleRef.current = msg.role;
+          console.log("role:", msg.role);
+          break;
+
+        case "ready":
+          console.log("readyきた");
+
+          if (roleRef.current === "offer") {
+            startOffer(ws, pc, channelsRef.current, handleMessage);
+          }
+          break;
         case "offer":
           await handleOffer(ws, pc, msg.sdp);
           break;
