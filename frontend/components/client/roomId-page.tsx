@@ -42,7 +42,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     disconnected: "bg-red-500",
   };
   const pathname = usePathname();
-  const url = `http://localhost:3000${pathname}`;
+  const url = `${location.origin}${pathname}`;
 
   useEffect(() => {
     if (initialized.current) return;
@@ -50,7 +50,7 @@ export const RoomIdPage = ({ roomId }: RoomIdPageProps) => {
     senderRef.current = createSender(channelsRef.current);
 
     const protocol = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${protocol}://localhost:8080/ws/${roomId}`);
+    const ws = new WebSocket(`${protocol}://${location.host}/ws/${roomId}`);
     const pc = new RTCPeerConnection(Config);
 
     pc.onconnectionstatechange = () => {
