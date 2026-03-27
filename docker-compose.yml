@@ -3,26 +3,30 @@ version: "3.8"
 services:
   nginx:
     image: nginx:latest
+    container_name: nginx
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - ./nginx/default.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - frontend
       - backend
+    restart: always
 
   backend:
     build:
       context: ./backend
+    container_name: backend
     expose:
       - "8080"
+    restart: always
 
   frontend:
     build:
       context: ./frontend
+    container_name: frontend
     expose:
       - "3000"
-    depends_on:
-      - backend
+    restart: always
