@@ -26,8 +26,12 @@ text message
 
 ### **Tech Stack**
 
-- Frontend: Next.js
+<img src="https://skillicons.dev/icons?i=go,ts,next,docker,nginx" />
+
+- Frontend: Next.js(TypeScript)
 - Backend: Go (Gin)
+- container: Docker
+- server: nginx
 - Signaling: WebSocket
 - P2P通信: WebRTC (STUN)
 
