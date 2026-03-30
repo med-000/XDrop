@@ -15,6 +15,10 @@ export default function JoinRoom() {
 
     router.push(`/room/${roomId}`);
   };
+  const handleCreateRoom = () => {
+    const roomId = crypto.randomUUID();
+    router.push(`/room/${roomId}`);
+  };
 
   return (
     <div className='min-h-[calc(100vh-3.5rem)] flex items-center justify-center bg-white px-4'>
@@ -51,12 +55,12 @@ export default function JoinRoom() {
           <p className='text-center text-gray-600 text-sm mb-3'>
             新しいルームを作成しますか？
           </p>
-          <Link
-            href='/room'
+          <button
+            onClick={handleCreateRoom}
             className='block w-full px-4 py-2 bg-gray-800 hover:bg-black text-white font-bold rounded-lg transition-colors text-center shadow-md hover:shadow-lg border border-gray-700'
           >
             新しいルームを作成
-          </Link>
+          </button>
         </div>
       </div>
     </div>
