@@ -16,7 +16,7 @@ export default function JoinRoom() {
     router.push(`/room/${roomId}`);
   };
   const handleCreateRoom = () => {
-    const roomId = crypto.randomUUID();
+    const roomId = crypto.randomUUID().slice(0, 6);
     router.push(`/room/${roomId}`);
   };
 
